@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');const os=require('node:os');const path=require('node:path');const {spawn}=require('node:child_process');
 test('import, review gate, rules, duplicate files, errors and persistence',async(t)=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'fin-buddy-test-'));
-  for(const file of ['server.js','review.js','local-ai.js','workflow.js','pdf-bridge.js','pdf_import.py','pdf_layouts.py','document-import.py','image-ocr.ps1','statement-formats.js','sources.js','accounts.js','folder-picker.js'])fs.copyFileSync(path.join(__dirname,file),path.join(dir,file));
+  for(const file of ['server.js','review.js','local-ai.js','transaction-splits.js','workflow.js','pdf-bridge.js','pdf_import.py','pdf_layouts.py','document-import.py','image-ocr.ps1','statement-formats.js','sources.js','accounts.js','folder-picker.js'])fs.copyFileSync(path.join(__dirname,file),path.join(dir,file));
   const port=33210;
   let child;
   async function start(){child=spawn(process.execPath,[path.join(dir,'server.js')],{env:{...process.env,PORT:String(port)},stdio:['ignore','pipe','pipe']});await new Promise((resolve,reject)=>{child.stdout.once('data',resolve);child.once('error',reject);child.once('exit',code=>reject(Error('Server exited '+code)));});}
@@ -24,7 +24,8 @@ test('import, review gate, rules, duplicate files, errors and persistence',async
   let salary=r.body.transactions.find(row=>row.description==='Salary');let grocery=r.body.transactions.find(row=>row.description==='Grocery shop');
   await request('/api/categorize',{id:salary.id,category:'Income'});
   r=await request('/api/categorize',{id:grocery.id,category:'Groceries',remember:true,pattern:'Grocery'});
-  assert.equal(r.body.transactions.filter(row=>!row.category).length,0);
+  assert.equal(r.body.transactions.filter(row=>!row.category).length,1);
+  const otherGrocery=r.body.transactions.find(row=>row.description==='Grocery shop'&&row.id!==grocery.id);await request('/api/categorize',{id:otherGrocery.id,category:'Groceries'});
   r=await request('/api/report?month=2026-09');assert.equal(r.status,200);assert.equal(r.body.net,340575);
   fs.writeFileSync(path.join(dir,'statements','bad.csv'),'Date,Description,Amount\n2026-02-30,Bad,1');
   r=await request('/api/scan',{});assert.equal(r.body.issues.length,1);
@@ -61,6 +62,11 @@ test('import, review gate, rules, duplicate files, errors and persistence',async
   r=await request('/api/trip',{remove:trip.id});assert.equal(r.body.transactions.length,4);assert.equal(r.body.trips.length,0);
   r=await request('/api/split',{remove:split.id});assert.equal(r.body.merchantGroups.some(g=>g.split),false);
   await stop();await start();r=await request('/api/state');assert.equal(r.body.transactions.filter(t=>t.category==='Weekly shop').length,2);assert.ok(r.body.categories.includes('Food purchases'));
+  const beforeSplit=r.body.transactions.length,original=r.body.transactions.find(t=>t.id===groceries[0]);
+  r=await request('/api/transaction-split',{id:original.id,parts:[{description:'A',cents:-2000,category:'Weekly shop'},{description:'B',cents:original.cents+2000,category:null}]});assert.equal(r.status,200);assert.equal(r.body.transactions.length,beforeSplit+1);const children=r.body.transactions.filter(t=>t.parentId===original.id);assert.equal(children.length,2);assert.equal(children.reduce((sum,t)=>sum+t.cents,0),original.cents);
+  r=await request('/api/report?month=2026-09');assert.equal(r.status,409);
+  await request('/api/categorize',{id:children[1].id,category:'Other'});await stop();await start();r=await request('/api/state');assert.equal(r.body.transactions.find(t=>t.id===children[1].id).category,'Other');
+  r=await request('/api/transaction-split',{id:original.id,undo:true});assert.equal(r.body.transactions.length,beforeSplit);assert.equal(r.body.transactions.find(t=>t.id===original.id).cents,original.cents);
   fs.writeFileSync(path.join(nested,'correct-me.csv'),'Date,Description,Amount\n2026-09-07,Corrected,invalid');
   r=await request('/api/scan',{});assert.equal(r.body.issues.length,1);
   r=await request('/api/import-correction',{file:path.join(nested,'correct-me.csv'),csv:'Date,Description,Amount,Currency,City,Channel\n2026-09-07,Corrected,-12.00,CAD,Toronto,chip'});assert.equal(r.status,200);assert.equal(r.body.issues.length,0);assert.equal(r.body.transactions.find(t=>t.description==='Corrected').city,'Toronto');assert.ok(fs.readFileSync(path.join(nested,'correct-me.csv'),'utf8').includes('invalid'));

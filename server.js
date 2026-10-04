@@ -10,6 +10,7 @@ const {browseFolder}=require('./folder-picker');
 const {parseExport,recordsToRows}=require('./statement-formats');
 const {reviewSnapshot,matches:scopeMatches,key,validateScope,ruleCategories}=require('./review');
 const {predict}=require('./local-ai');
+const {activeTransactions,splitTransaction}=require('./transaction-splits');
 const root = __dirname;
 const dataDir = path.join(root, 'data');
 fs.mkdirSync(dataDir, { recursive: true });
@@ -28,7 +29,7 @@ for(const transaction of db.transactions){
     transaction.account=identifyAccount(source,transaction);
 }
 function save() { fs.writeFileSync(dbFile + '.tmp', JSON.stringify(db, null, 2)); fs.renameSync(dbFile + '.tmp', dbFile); }
-function snapshot() {const transactions=db.transactions.filter(t=>!t.duplicateOf);return { ...db,...reviewSnapshot(db,transactions),transactions, months: [...new Set(transactions.map(t => t.date.slice(0,7)))].sort().reverse() }; }
+function snapshot() {const transactions=activeTransactions(db);return { ...db,...reviewSnapshot(db,transactions),transactions, months: [...new Set(transactions.map(t => t.date.slice(0,7)))].sort().reverse() }; }
 function chooseCategory(input) {
   if(input.category!=='__new__') {if(!db.categories.includes(input.category))throw Error('Choose a valid category.');return input.category;}
   const name=typeof input.newCategory==='string'?input.newCategory.trim().replace(/\s+/g,' '):'';
@@ -37,7 +38,7 @@ function chooseCategory(input) {
 }
 function applyEditedRule(oldPattern,newPattern) {
   let updated=0;
-  for(const row of db.transactions) {
+  for(const row of activeTransactions(db)) {
     const description=row.description.toLowerCase();
     if(!description.includes(oldPattern)&&!description.includes(newPattern))continue;
     const categories=ruleCategories(row,db.rules);
@@ -108,13 +109,13 @@ const server = http.createServer(async (req,res) => {
     if (req.method === 'POST' && req.headers.origin && ![`http://localhost:${port}`,`http://127.0.0.1:${port}`].includes(req.headers.origin)) return reply(res,403,{error:'Invalid origin.'});
     const url = new URL(req.url, `http://localhost:${port}`);
     if (req.method === 'GET' && url.pathname === '/') return reply(res,200,fs.readFileSync(path.join(root,'public','index.html')),'text/html; charset=utf-8');
-    if(req.method==='GET'&&['/review-ui.js','/home-ui.js'].includes(url.pathname))return reply(res,200,fs.readFileSync(path.join(root,'public',url.pathname.slice(1))),'text/javascript; charset=utf-8');
+    if(req.method==='GET'&&['/review-ui.js','/home-ui.js','/ledger-ui.js'].includes(url.pathname))return reply(res,200,fs.readFileSync(path.join(root,'public',url.pathname.slice(1))),'text/javascript; charset=utf-8');
     if (req.method === 'GET' && url.pathname === '/api/state') return reply(res,200,snapshot());
     if (req.method === 'GET' && url.pathname === '/api/report') {
       const month = url.searchParams.get('month');
       if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month || '')) throw new Error('Choose a valid month.');
       if (db.issues.length) return reply(res,409,{error:'Resolve all statement import issues and scan again before generating reports.'});
-      const rows = db.transactions.filter(t => !t.duplicateOf&&t.date.startsWith(month));
+      const rows = activeTransactions(db).filter(t => t.date.startsWith(month));
       const pending = rows.filter(t => !t.category);
       if (pending.length) return reply(res,409,{error:`Complete the ${pending.length} unfinished tasks for this month first.`});
       if (!rows.length) throw new Error('No transactions found for this month.');
@@ -125,9 +126,17 @@ const server = http.createServer(async (req,res) => {
     if (req.method !== 'POST') return reply(res,404,{error:'Not found.'});
     let body = ''; for await (const chunk of req) { body += chunk; if (body.length > 100000) throw new Error('Request too large.'); }
     const input = JSON.parse(body || '{}');
+    if(url.pathname==='/api/transaction-split'){
+      const t=db.transactions.find(t=>t.id===input.id&&!t.duplicateOf);if(!t)throw Error('Split the original transaction, rather than a split part.');
+      const oldIds=[t.id,...(t.splitParts||[]).map(p=>p.id)];
+      if(input.undo)delete t.splitParts;else t.splitParts=splitTransaction(t,input.parts,db.categories,db.transferCategory);
+      const newIds=t.splitParts?.map(p=>p.id)||[t.id];
+      for(const group of [...(db.trips||[]),...(db.merchantSplits||[])])if(group.ids.some(id=>oldIds.includes(id)))group.ids=[...new Set([...group.ids.filter(id=>!oldIds.includes(id)),...newIds])];
+      save();return reply(res,200,snapshot());
+    }
     if(url.pathname==='/api/local-ai'){
       const settings={endpoint:String(input.endpoint||''),model:String(input.model||'')};
-      const result=await predict(settings,reviewSnapshot(db,db.transactions.filter(t=>!t.duplicateOf)).merchantGroups.filter(g=>!g.confirmed).slice(0,50),db.categories);
+      const result=await predict(settings,reviewSnapshot(db,activeTransactions(db)).merchantGroups.filter(g=>!g.confirmed).slice(0,50),db.categories);
       db.aiSettings=settings;db.aiSuggestions=result;save();return reply(res,200,snapshot());
     }
     if(url.pathname==='/api/import-correction'){
@@ -153,13 +162,13 @@ const server = http.createServer(async (req,res) => {
       if(old===db.transferCategory)db.transferCategory=name;
       db.rules=db.rules.filter(r=>r.category!==old);
       db.rules.push(...patterns.map(pattern=>({...previous.find(r=>r.pattern===pattern),pattern,category:name})));
-      for(const t of db.transactions)if(t.category===old){if(old==='Transfers')t.isTransfer=true;t.category=name;}
+      for(const t of [...db.transactions,...activeTransactions(db)])if(t.category===old){if(old==='Transfers')t.isTransfer=true;t.category=name;}
       for(const pattern of new Set([...previous.map(r=>r.pattern),...patterns]))applyEditedRule(pattern,pattern);
       save();return reply(res,200,snapshot());
     }
     if(url.pathname==='/api/bulk'){
       if(!Array.isArray(input.ids)||!input.ids.length)throw Error('Select transactions first.');
-      const rows=db.transactions.filter(t=>!t.duplicateOf&&input.ids.includes(t.id));
+      const rows=activeTransactions(db).filter(t=>input.ids.includes(t.id));
       if(rows.length!==new Set(input.ids).size)throw Error('Some transactions no longer exist.');
       const category=chooseCategory(input);
       const scope=validateScope(input.scope||{});
@@ -169,12 +178,12 @@ const server = http.createServer(async (req,res) => {
       for(const t of rows){t.category=category;t.isTransfer=category===db.transferCategory;}
       save();return reply(res,200,snapshot());
     }
-    if(url.pathname==='/api/split-preview'){const scope=validateScope(input.scope||{});return reply(res,200,{ids:db.transactions.filter(t=>!t.duplicateOf&&scopeMatches(t,scope)).map(t=>t.id)});}
+    if(url.pathname==='/api/split-preview'){const scope=validateScope(input.scope||{});return reply(res,200,{ids:activeTransactions(db).filter(t=>scopeMatches(t,scope)).map(t=>t.id)});}
     if(url.pathname==='/api/split'){
       db.merchantSplits||=[];
       if(input.remove){db.merchantSplits=db.merchantSplits.filter(g=>g.id!==input.remove);save();return reply(res,200,snapshot());}
       const ids=[...new Set(input.ids||[])];
-      if(!ids.length||ids.some(id=>!db.transactions.some(t=>t.id===id&&!t.duplicateOf)))throw Error('Select valid transactions for the new group.');
+      if(!ids.length||ids.some(id=>!activeTransactions(db).some(t=>t.id===id)))throw Error('Select valid transactions for the new group.');
       const name=String(input.name||'').trim();if(!name||name.length>100)throw Error('Enter a group name up to 100 characters.');
       for(const g of db.merchantSplits)g.ids=g.ids.filter(id=>!ids.includes(id));
       db.merchantSplits=db.merchantSplits.filter(g=>g.ids.length);
@@ -190,7 +199,7 @@ const server = http.createServer(async (req,res) => {
       if(input.reject){db.rejectedTrips.push(input.reject);save();return reply(res,200,snapshot());}
       if(input.remove){db.trips=db.trips.filter(t=>t.id!==input.remove);save();return reply(res,200,snapshot());}
       const name=String(input.name||'').trim(),ids=[...new Set(input.ids||[])];
-      if(!name||name.length>100||!ids.length||ids.some(id=>!db.transactions.some(t=>t.id===id&&!t.duplicateOf)))throw Error('Enter a trip name and select valid transactions.');
+      if(!name||name.length>100||!ids.length||ids.some(id=>!activeTransactions(db).some(t=>t.id===id)))throw Error('Enter a trip name and select valid transactions.');
       if(!input.from||!input.to)throw Error('Choose a valid trip date range.');validateScope({from:input.from,to:input.to});
       const trip={id:input.id||key(Date.now()+name),suggestionId:input.suggestionId,name,ids,from:input.from,to:input.to,label:['Personal','Business'].includes(input.label)?input.label:'Unspecified',confidence:'Confirmed by user'};
       for(const t of db.trips)t.ids=t.ids.filter(id=>!ids.includes(id));
@@ -221,7 +230,7 @@ const server = http.createServer(async (req,res) => {
       const updated=applyEditedRule(oldPattern,pattern);save();return reply(res,200,{...snapshot(),updated});
     }
     if (url.pathname === '/api/categorize') {
-      const t = db.transactions.find(t => t.id === input.id);
+      const t = activeTransactions(db).find(t => t.id === input.id);
       if (!t) throw new Error('Choose a valid transaction.');
       const category=chooseCategory(input);
       const pattern=String(input.pattern||'').trim().toLowerCase();
@@ -229,7 +238,7 @@ const server = http.createServer(async (req,res) => {
       if(!db.categories.includes(category)) db.categories.push(category);
       if (input.remember) {
         db.rules = db.rules.filter(r => r.pattern !== pattern); db.rules.push({pattern,category});
-        applyEditedRule(pattern,pattern);
+        // Individual saves update only this transaction; the rule is used on future imports.
       }
       t.category = category;t.isTransfer=category===db.transferCategory; save(); return reply(res,200,snapshot());
     }
