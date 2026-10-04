@@ -1,0 +1,6 @@
+data/
+statements/*
+!statements/.gitkeep
+node_modules/
+vendor/
+__pycache__/

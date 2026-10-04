@@ -1,0 +1,4 @@
+pdfplumber
+openpyxl
+Pillow
+xlrd==2.0.2
