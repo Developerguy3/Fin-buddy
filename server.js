@@ -9,13 +9,19 @@ const {identifyAccount}=require('./accounts');
 const {browseFolder}=require('./folder-picker');
 const {parseExport,recordsToRows}=require('./statement-formats');
 const {reviewSnapshot,matches:scopeMatches,key,validateScope,ruleCategories}=require('./review');
-const {predict}=require('./local-ai');
+const {predict,discover}=require('./local-ai');
+const {recognize,keywordTerms,keywordMatch}=require('./recognition');
 const {activeTransactions,splitTransaction}=require('./transaction-splits');
 const root = __dirname;
 const dataDir = path.join(root, 'data');
 fs.mkdirSync(dataDir, { recursive: true });
 fs.mkdirSync(path.join(root, 'statements'), { recursive: true });
-const dbFile = path.join(dataDir, 'ledger.json');
+const profilesFile=path.join(dataDir,'profiles.json');
+let profiles=fs.existsSync(profilesFile)?JSON.parse(fs.readFileSync(profilesFile,'utf8')):{active:'default',items:[{id:'default',name:'Main profile'}]};
+const profilePath=id=>id==='default'?path.join(dataDir,'ledger.json'):path.join(dataDir,'profile-'+id+'.json');
+let dbFile = profilePath(profiles.active);
+function saveProfiles(){fs.writeFileSync(profilesFile+'.tmp',JSON.stringify(profiles,null,2));fs.renameSync(profilesFile+'.tmp',profilesFile);}
+function emptyProfile(mode){return {folder:path.join(root,'statements'),folders:[],transactions:[],rules:[],issues:[],imports:[],exclusions:[],transferCategory:'Transfers',profileMode:mode,categories:['Income','Housing','Groceries','Dining','Transport','Utilities','Healthcare','Shopping','Entertainment','Transfers','Other','Bank fees',...(mode==='professional'?['Business supplies','Contractors','Payroll','Rent','Insurance']:['Insurance'])]};}
 const cacheFile=path.join(dataDir,'import-cache.json');
 let importCache=fs.existsSync(cacheFile)?JSON.parse(fs.readFileSync(cacheFile,'utf8')):{};
 let db = fs.existsSync(dbFile) ? JSON.parse(fs.readFileSync(dbFile, 'utf8')) : { folder: path.join(root, 'statements'), transactions: [], rules: [], issues: [], imports: [], categories: ['Income', 'Housing', 'Groceries', 'Dining', 'Transport', 'Utilities', 'Healthcare', 'Shopping', 'Entertainment', 'Transfers', 'Other'] };
@@ -29,18 +35,41 @@ for(const transaction of db.transactions){
     transaction.account=identifyAccount(source,transaction);
 }
 function save() { fs.writeFileSync(dbFile + '.tmp', JSON.stringify(db, null, 2)); fs.renameSync(dbFile + '.tmp', dbFile); }
-function snapshot() {const transactions=activeTransactions(db);return { ...db,...reviewSnapshot(db,transactions),transactions, months: [...new Set(transactions.map(t => t.date.slice(0,7)))].sort().reverse() }; }
+function snapshot() {const transactions=activeTransactions(db);return { ...db,profiles:profiles.items,activeProfile:profiles.active,...reviewSnapshot(db,transactions),transactions, months: [...new Set(transactions.map(t => t.date.slice(0,7)))].sort().reverse() }; }
 function chooseCategory(input) {
   if(input.category!=='__new__') {if(!db.categories.includes(input.category))throw Error('Choose a valid category.');return input.category;}
   const name=typeof input.newCategory==='string'?input.newCategory.trim().replace(/\s+/g,' '):'';
   if(!name||name.length>60||/[\x00-\x1f]/.test(name)||name==='__new__')throw Error('Enter a new category name between 1 and 60 characters.');
   return db.categories.find(c=>c.toLowerCase()===name.toLowerCase())||name;
 }
+let automationRunning=false;
+async function automaticRecognition(){
+  if(automationRunning)return;automationRunning=true;
+  try{
+    const rows=activeTransactions(db),result=recognize(rows,db.rules,{mode:db.profileMode,transferCategory:db.transferCategory},ruleCategories);
+    for(const t of rows)if(t.category&&!db.categories.includes(t.category))db.categories.push(t.category);
+    db.automationSummary={...result,modelApplied:0,at:new Date().toISOString()};
+    db.aiStatus=await discover(db.aiSettings||{});
+    if(db.aiStatus.available&&db.automaticAI!==false){
+      db.aiSettings={endpoint:db.aiStatus.endpoint,model:db.aiStatus.model,provider:db.aiStatus.provider};
+      const batches=reviewSnapshot(db,rows).merchantGroups.filter(g=>!g.confirmed),started=Date.now();db.aiSuggestions||=[];
+      for(let offset=0;offset<batches.length&&Date.now()-started<120000;offset+=8){
+        const batch=batches.slice(offset,offset+8);db.automationProgress={stage:'local-model',completed:offset,total:batches.length};
+        const suggestions=await predict(db.aiSettings,batch,db.categories,db.profileMode||'personal');
+        db.aiSuggestions=db.aiSuggestions.filter(s=>!batch.some(g=>g.id===s.id));db.aiSuggestions.push(...suggestions);
+        for(const s of suggestions){const group=batch.find(g=>g.id===s.id);if(s.confidence!=='high'||!s.reason||['Other',db.transferCategory].includes(s.category)||(group.total<0&&s.category==='Income'))continue;
+          for(const t of group.transactions)if(!t.category&&ruleCategories(t,db.rules).length<2){t.category=s.category;t.categorySource='local-llm';t.recognition={layer:'local-llm',confidence:'high',reason:s.reason,model:db.aiSettings.model};db.automationSummary.modelApplied++;}
+        }
+      }
+    }
+  }catch(e){db.aiStatus={...db.aiStatus,available:false,error:e.message};}
+  finally{db.automationProgress={stage:'complete'};automationRunning=false;save();}
+}
 function applyEditedRule(oldPattern,newPattern) {
   let updated=0;
   for(const row of activeTransactions(db)) {
     const description=row.description.toLowerCase();
-    if(!description.includes(oldPattern)&&!description.includes(newPattern))continue;
+    if(!keywordMatch(description,oldPattern)&&!keywordMatch(description,newPattern))continue;
     const categories=ruleCategories(row,db.rules);
     const category=categories.length===1?categories[0]:null;
     if(row.category!==category){row.category=category;row.isTransfer=category===db.transferCategory;updated++;}
@@ -53,21 +82,22 @@ function scan() {
   const external=/\.(pdf|xlsx|xlsm|xls|ods|xml|html|htm|docx|png|jpe?g|tiff?|bmp|webp)$/i;
   const hashes=new Map();for(const file of files){try{hashes.set(file,crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex'));}catch{}}
   let pdfs = new Map(), pdfError;
-  try { pdfs = extractPdfs(files.filter(name=>external.test(name)&&!importCache[hashes.get(name)]&&!db.exclusions.some(e=>e.hash===hashes.get(name)))); } catch(e) { pdfError=e.message; }
+  try { pdfs = extractPdfs(files.filter(name=>!importCache[hashes.get(name)]&&!db.exclusions.some(e=>e.hash===hashes.get(name)))); } catch(e) { pdfError=e.message; }
   for (const name of files) {
     try {
       const bytes = fs.readFileSync(name);
       const hash = crypto.createHash('sha256').update(bytes).digest('hex');
       if(db.exclusions.some(e=>e.hash===hash)){imports.push({file:name,count:0,excluded:true});continue;}
       const extension=path.extname(name).toLowerCase();
-      if(!external.test(name)&&!['.csv','.tsv','.txt','.ofx','.qfx','.qif','.json'].includes(extension))throw Error('Unrecognized statement format. Supported exports: PDF, CSV, TSV, TXT, Excel, ODS, OFX, QFX, QIF, JSON, XML, HTML and statement images.');
       const pdf = db.corrections?.find(c=>c.hash===hash)||importCache[hash] || pdfs.get(name);
-      if(external.test(name) && (!pdf || pdf.error)) throw Error(pdfError || pdf?.error || 'Document could not be read.');
-      const rows = db.corrections?.find(c=>c.hash===hash)?.rows || (external.test(name) ? pdf.rows || (pdf.records?recordsToRows(pdf.records):parseStatement(pdf.csv)) : parseExport(bytes.toString('utf8'),extension));
-      if(external.test(name))importCache[hash]=pdf;
+      const native=['.csv','.tsv','.txt','.ofx','.qfx','.qif','.json'].includes(extension);
+      let rows=db.corrections?.find(c=>c.hash===hash)?.rows;
+      if(!rows&&native){try{rows=parseExport(bytes.toString('utf8'),extension);}catch(e){if(!pdf||pdf.error){e.document=pdf?.document;throw e;}}}
+      if(!rows){if(!pdf||pdf.error){const error=Error(pdfError||pdf?.error||'Document could not be read.');error.document=pdf?.document;throw error;}rows=pdf.rows||(pdf.records?recordsToRows(pdf.records):parseStatement(pdf.csv));}
+      if(pdf)importCache[hash]=pdf;
       rows.forEach((row, index) => staged.push({ ...row, id: crypto.createHash('sha256').update(hash + ':' + index).digest('hex'), source:name, account:identifyAccount(name,row),category:row.category||null }));
-      imports.push({file:name, count:rows.length,...(pdf?.note?{note:pdf.note}:!rows.length?{note:'Statement or summary contains no itemized transactions.'}:{})});
-    } catch (e) { issues.push({file:name,filePath:name, message:e.message}); }
+      imports.push({file:name, count:rows.length,...(pdf?.document?{document:{...pdf.document,text:undefined}}:{}),...(pdf?.note?{note:pdf.note}:!rows.length?{note:'Statement or summary contains no itemized transactions.'}:{})});
+    } catch (e) { issues.push({file:name,filePath:name, message:e.message,...(e.document?{document:e.document}:{})}); }
   }
   const ids = new Set(db.transactions.map(t => t.id));
   const fingerprint=t=>[t.account?.id||'',t.date,t.cents,t.description.toLowerCase().replace(/[^a-z0-9]/g,'')].join('|');
@@ -103,14 +133,17 @@ function scan() {
   fs.writeFileSync(cacheFile,JSON.stringify(importCache));db.issues = issues; db.imports = imports; db.lastScan = new Date().toISOString(); save(); return added;
 }
 function reply(res, status, payload, type='application/json') { res.writeHead(status, {'Content-Type':type, 'Cache-Control':'no-store', 'X-Content-Type-Options':'nosniff'}); res.end(type === 'application/json' ? JSON.stringify(payload) : payload); }
+let mutationBusy=false;
 const server = http.createServer(async (req,res) => {
+  let ownsMutation=false;
   try {
     if (req.headers.host !== `127.0.0.1:${port}` && req.headers.host !== `localhost:${port}`) return reply(res,403,{error:'Invalid host.'});
     if (req.method === 'POST' && req.headers.origin && ![`http://localhost:${port}`,`http://127.0.0.1:${port}`].includes(req.headers.origin)) return reply(res,403,{error:'Invalid origin.'});
     const url = new URL(req.url, `http://localhost:${port}`);
     if (req.method === 'GET' && url.pathname === '/') return reply(res,200,fs.readFileSync(path.join(root,'public','index.html')),'text/html; charset=utf-8');
-    if(req.method==='GET'&&['/review-ui.js','/home-ui.js','/ledger-ui.js'].includes(url.pathname))return reply(res,200,fs.readFileSync(path.join(root,'public',url.pathname.slice(1))),'text/javascript; charset=utf-8');
+    if(req.method==='GET'&&['/review-ui.js','/home-ui.js','/ledger-ui.js','/automation-ui.js','/profiles-ui.js'].includes(url.pathname))return reply(res,200,fs.readFileSync(path.join(root,'public',url.pathname.slice(1))),'text/javascript; charset=utf-8');
     if (req.method === 'GET' && url.pathname === '/api/state') return reply(res,200,snapshot());
+    if(req.method==='GET'&&url.pathname==='/api/ai-status'){const target=db;target.aiStatus=await discover(target.aiSettings||{});return reply(res,200,target.aiStatus);}
     if (req.method === 'GET' && url.pathname === '/api/report') {
       const month = url.searchParams.get('month');
       if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month || '')) throw new Error('Choose a valid month.');
@@ -126,6 +159,34 @@ const server = http.createServer(async (req,res) => {
     if (req.method !== 'POST') return reply(res,404,{error:'Not found.'});
     let body = ''; for await (const chunk of req) { body += chunk; if (body.length > 100000) throw new Error('Request too large.'); }
     const input = JSON.parse(body || '{}');
+    if(mutationBusy)return reply(res,409,{error:'Another change is still processing. Please wait before saving or switching profiles.'});
+    mutationBusy=true;ownsMutation=true;
+    if(req.headers['x-finbuddy-profile']&&req.headers['x-finbuddy-profile']!==profiles.active)return reply(res,409,{error:'The active profile changed in another tab. Refresh this page before saving.'});
+    if(url.pathname==='/api/profiles'){
+      if(automationRunning)throw Error('Wait for recognition to finish before changing profiles.');
+      if(input.action==='create'){
+        const name=String(input.name||'').trim().replace(/\s+/g,' ');
+        if(!name||name.length>60||/[\x00-\x1f]/.test(name))throw Error('Enter a profile name between 1 and 60 characters.');
+        if(profiles.items.some(p=>p.name.toLowerCase()===name.toLowerCase()))throw Error('A profile with this name already exists.');
+        if(!['personal','professional'].includes(input.mode))throw Error('Choose Personal or Professional.');
+        save();const id=crypto.randomUUID(),next=emptyProfile(input.mode);
+        fs.writeFileSync(profilePath(id),JSON.stringify(next,null,2));profiles.items.push({id,name});profiles.active=id;dbFile=profilePath(id);db=next;saveProfiles();
+      }else if(input.action==='switch'){
+        const item=profiles.items.find(p=>p.id===input.id);if(!item)throw Error('Choose an existing profile.');
+        const next=JSON.parse(fs.readFileSync(profilePath(item.id),'utf8'));save();profiles.active=item.id;dbFile=profilePath(item.id);db=next;saveProfiles();
+      }else throw Error('Choose create or switch.');
+      return reply(res,200,snapshot());
+    }
+    if(url.pathname==='/api/profile'){
+      if(!['personal','professional'].includes(input.mode))throw Error('Choose Personal or Professional.');db.profileMode=input.mode;db.automaticAI=input.automaticAI!==false;
+      for(const category of input.mode==='professional'?['Business supplies','Contractors','Payroll','Rent','Insurance']:['Insurance'])if(!db.categories.includes(category))db.categories.push(category);
+      save();await automaticRecognition();return reply(res,200,snapshot());
+    }
+    if(url.pathname==='/api/ai-settings'){
+      const status=await discover({endpoint:input.endpoint,model:input.model,provider:input.provider==='openai'?'openai':'ollama'});
+      db.aiSettings={endpoint:input.endpoint,model:input.model||status.model||'',provider:input.provider==='openai'?'openai':'ollama'};db.aiStatus=status;db.automaticAI=input.automaticAI!==false;save();await automaticRecognition();return reply(res,200,snapshot());
+    }
+    if(url.pathname==='/api/recognize'){await automaticRecognition();return reply(res,200,snapshot());}
     if(url.pathname==='/api/transaction-split'){
       const t=db.transactions.find(t=>t.id===input.id&&!t.duplicateOf);if(!t)throw Error('Split the original transaction, rather than a split part.');
       const oldIds=[t.id,...(t.splitParts||[]).map(p=>p.id)];
@@ -142,7 +203,7 @@ const server = http.createServer(async (req,res) => {
     if(url.pathname==='/api/import-correction'){
       const issue=db.issues.find(i=>i.file===input.file&&i.filePath);if(!issue)throw Error('Choose a current statement import problem.');
       const rows=parseStatement(String(input.csv||''));const hash=crypto.createHash('sha256').update(fs.readFileSync(issue.filePath)).digest('hex');
-      db.corrections||=[];db.corrections=db.corrections.filter(c=>c.hash!==hash);db.corrections.push({hash,rows,note:'User supplied corrected transaction rows; original file preserved.'});save();const added=scan();return reply(res,200,{...snapshot(),added});
+      db.corrections||=[];db.corrections=db.corrections.filter(c=>c.hash!==hash);db.corrections.push({hash,rows,note:'User supplied corrected transaction rows; original file preserved.'});save();const added=scan();await automaticRecognition();return reply(res,200,{...snapshot(),added});
     }
     if(url.pathname==='/api/merchant-alias'){
       const names=Array.isArray(input.names)?input.names.filter(n=>typeof n==='string'):[];const name=String(input.name||'').trim();
@@ -155,7 +216,7 @@ const server = http.createServer(async (req,res) => {
       if(old&&!db.categories.includes(old))throw Error('Category no longer exists.');
       if(db.categories.some(c=>c.toLowerCase()===name.toLowerCase()&&c!==old))throw Error('That category already exists.');
       const patterns=String(input.patterns||'').split('\n').map(p=>p.trim().toLowerCase()).filter(Boolean);
-      if(patterns.some(p=>p.length<3||p.length>300))throw Error('Each merchant rule needs 3 to 300 characters.');
+      if(patterns.some(p=>!keywordTerms(p).length||keywordTerms(p).some(term=>term.length>300)))throw Error('Each merchant rule needs valid comma-separated keywords.');
       if(patterns.some(p=>db.rules.some(r=>r.category!==old&&r.pattern===p)))throw Error('A matching rule already belongs to another category.');
       const previous=db.rules.filter(r=>r.category===old);
       db.categories=old?db.categories.map(c=>c===old?name:c):[...db.categories,name];
@@ -175,7 +236,7 @@ const server = http.createServer(async (req,res) => {
       if(input.remember&&(!scope.pattern||scope.pattern.trim().length<3||!rows.every(t=>scopeMatches(t,scope))))throw Error('The permanent rule must match all selected transactions and contain at least 3 characters.');
       if(!db.categories.includes(category))db.categories.push(category);
       if(input.remember)db.rules.push({...scope,pattern:scope.pattern.toLowerCase(),category});
-      for(const t of rows){t.category=category;t.isTransfer=category===db.transferCategory;}
+      for(const t of rows){t.category=category;t.categorySource='user';t.isTransfer=category===db.transferCategory;}
       save();return reply(res,200,snapshot());
     }
     if(url.pathname==='/api/split-preview'){const scope=validateScope(input.scope||{});return reply(res,200,{ids:activeTransactions(db).filter(t=>scopeMatches(t,scope)).map(t=>t.id)});}
@@ -208,25 +269,25 @@ const server = http.createServer(async (req,res) => {
     if(url.pathname==='/api/browse')return reply(res,200,browseFolder(input.initial||''));
     if (url.pathname === '/api/settings') {
       const folders=normalizeSources(input);
-      db.folders=folders;db.folder=folders[0]; db.issues = [{file:'Folder changed',message:'Import is pending.'}]; save(); const added=scan(); return reply(res,200,{...snapshot(),added});
+      db.folders=folders;db.folder=folders[0]; db.issues = [{file:'Folder changed',message:'Import is pending.'}]; save(); const added=scan();await automaticRecognition(); return reply(res,200,{...snapshot(),added});
     }
     if (url.pathname === '/api/exclude') {
       const issue=db.issues.find(i=>i.file===input.file&&i.filePath);
       if(!issue) throw Error('Choose a file import issue from the current sources. Scan again if needed.');
       const hash=crypto.createHash('sha256').update(fs.readFileSync(issue.filePath)).digest('hex');
-      db.exclusions.push({hash,file:input.file,reason:'User marked as non-statement',at:new Date().toISOString()});save();const added=scan();return reply(res,200,{...snapshot(),added});
+      db.exclusions.push({hash,file:input.file,reason:'User marked as non-statement',at:new Date().toISOString()});save();const added=scan();await automaticRecognition();return reply(res,200,{...snapshot(),added});
     }
-    if (url.pathname === '/api/scan') { const added = scan(); return reply(res,200,{...snapshot(),added}); }
+    if (url.pathname === '/api/scan') { const added = scan();await automaticRecognition(); return reply(res,200,{...snapshot(),added}); }
     if(url.pathname==='/api/rules') {
       const oldPattern=String(input.oldPattern||'');
       const rule=db.rules.find(r=>r.pattern===oldPattern);
       if(!rule)throw Error('This rule no longer exists. Refresh and try again.');
       const pattern=String(input.pattern||'').trim().toLowerCase();
-      if(pattern.length<3||pattern.length>300)throw Error('Enter merchant or matching text between 3 and 300 characters.');
+      if(!keywordTerms(pattern).length||keywordTerms(pattern).some(term=>term.length>300))throw Error('Enter comma-separated matching keywords or phrases.');
       if(db.rules.some(r=>r!==rule&&r.pattern===pattern))throw Error('A rule already uses this matching text. Edit that rule instead.');
       const category=chooseCategory(input);
       if(!db.categories.includes(category))db.categories.push(category);
-      rule.pattern=pattern;rule.category=category;
+      rule.pattern=pattern;rule.category=category;rule.description=String(input.ruleDescription||rule.description||'').slice(0,300);rule.matchMode=input.matchMode==='all'?'all':rule.matchMode||'any';
       const updated=applyEditedRule(oldPattern,pattern);save();return reply(res,200,{...snapshot(),updated});
     }
     if (url.pathname === '/api/categorize') {
@@ -234,16 +295,18 @@ const server = http.createServer(async (req,res) => {
       if (!t) throw new Error('Choose a valid transaction.');
       const category=chooseCategory(input);
       const pattern=String(input.pattern||'').trim().toLowerCase();
-      if(input.remember && (pattern.length<3 || !t.description.toLowerCase().includes(pattern))) throw new Error('Matching text must be at least 3 characters copied from this transaction description.');
+      const terms=keywordTerms(pattern);if(input.remember&&(!terms.length||terms.length>30||terms.some(term=>term.length>300)||!keywordMatch(t.description,pattern,input.matchMode)))throw Error('Enter comma-separated keywords matching this transaction. Any mode needs at least one match; All mode needs every keyword.');
       if(!db.categories.includes(category)) db.categories.push(category);
       if (input.remember) {
-        db.rules = db.rules.filter(r => r.pattern !== pattern); db.rules.push({pattern,category});
-        // Individual saves update only this transaction; the rule is used on future imports.
+        db.rules = db.rules.filter(r => r.pattern !== pattern); db.rules.push({pattern,category,description:String(input.ruleDescription||'').slice(0,300),matchMode:input.matchMode==='all'?'all':'any'});
+        // Explicitly remembering a rule applies it to existing matches as well as future imports.
+        applyEditedRule(pattern,pattern);
       }
-      t.category = category;t.isTransfer=category===db.transferCategory; save(); return reply(res,200,snapshot());
+      t.category = category;t.categorySource='user';t.recognition={layer:'user',confidence:'confirmed',reason:'Category confirmed by you.'};t.isTransfer=category===db.transferCategory;await automaticRecognition();save(); return reply(res,200,snapshot());
     }
     return reply(res,404,{error:'Not found.'});
   } catch(e) { reply(res,400,{error:e.message}); }
+  finally{if(ownsMutation)mutationBusy=false;}
 });
 const port = Number(process.env.PORT || 3210);
 if (require.main === module) server.listen(port,'127.0.0.1', () => console.log(`Fin Buddy is ready at http://localhost:${port}`));

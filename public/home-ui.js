@@ -53,5 +53,5 @@ function initHome(){
   document.querySelector('#tourDialog').addEventListener('cancel',e=>{e.preventDefault();finishTour()});
   document.addEventListener('click',e=>{if(!e.target.closest('.profile-area')&&!document.querySelector('#tourDialog').open){menu.hidden=true;button.setAttribute('aria-expanded','false')}});
   document.addEventListener('keydown',e=>{if(e.key==='Escape'){menu.hidden=true;button.setAttribute('aria-expanded','false')}});
-  let seen=false;try{seen=localStorage.getItem('finbuddy.tutorial.complete')==='1'}catch{}if(!seen)startTour();
+  let seen=false;try{seen=localStorage.getItem('finbuddy.tutorial.complete')==='1'}catch{}if(!seen&&state.profileMode)startTour();
 }

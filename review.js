@@ -1,6 +1,8 @@
 const crypto=require('node:crypto');
+const {keywordMatch,normalizedMerchant}=require('./recognition');
 const key=s=>crypto.createHash('sha256').update(s).digest('hex').slice(0,16);
 function merchantName(description){
+  if(/\be[ -]?transfer/i.test(description))return normalizedMerchant(description);
   const text=String(description).toUpperCase().replace(/^(?:POS|PURCHASE|DEBIT PURCHASE|CARD PURCHASE)\s+/,'').replace(/[^A-Z0-9 # '&.-]/g,' ').replace(/\s+/g,' ').trim();
   if(/TRANSFER|PAYMENT|LOAN|WITHDRAWAL|DEPOSIT|\bTFR\b/.test(text))return text;
   return text.replace(/\s*#\d+\b/g,'').replace(/\s+\d{3,}$/,'').replace(/([A-Z])\d{3,}$/,'$1').trim();
@@ -13,7 +15,7 @@ function validateScope(s){
   if(scope.from&&scope.to&&scope.from>scope.to||scope.min!==undefined&&scope.max!==undefined&&scope.min>scope.max)throw Error('The range starts after it ends.');
   if(scope.channel&&!['In person','Online / recurring','Unknown'].includes(scope.channel))throw Error('Invalid channel filter.');return scope;
 }
-function ruleCategories(t,rules){const matching=rules.filter(r=>matches(t,r));const rank=r=>Object.keys(r).filter(k=>!['pattern','category'].includes(k)&&r[k]!==undefined&&r[k]!=='').length;const highest=Math.max(-1,...matching.map(rank));return [...new Set(matching.filter(r=>rank(r)===highest).map(r=>r.category))];}
+function ruleCategories(t,rules){const matching=rules.filter(r=>matches(t,r));const rank=r=>Object.keys(r).filter(k=>!['pattern','category','description','matchMode'].includes(k)&&r[k]!==undefined&&r[k]!=='').length;const highest=Math.max(-1,...matching.map(rank));return [...new Set(matching.filter(r=>rank(r)===highest).map(r=>r.category))];}
 function channel(t){
   const value=String(t.channel||t.paymentChannel||'').toLowerCase();
   if(/online|e.?commerce|card[ -]not[ -]present|recurring/.test(value))return 'Online / recurring';
@@ -21,7 +23,7 @@ function channel(t){
   return 'Unknown';
 }
 function matches(t,s={}){
-  return (!s.pattern||t.description.toLowerCase().includes(s.pattern.toLowerCase()))&&(!s.account||t.account?.id===s.account)&&(!s.from||t.date>=s.from)&&(!s.to||t.date<=s.to)&&(!s.location||String(t.location||t.city||'').toLowerCase()===s.location.toLowerCase())&&(!s.channel||channel(t)===s.channel)&&(s.min===undefined||Math.abs(t.cents)>=s.min)&&(s.max===undefined||Math.abs(t.cents)<=s.max);
+  return (!s.pattern||keywordMatch(t.description,s.pattern,s.matchMode))&&(!s.account||t.account?.id===s.account)&&(!s.from||t.date>=s.from)&&(!s.to||t.date<=s.to)&&(!s.location||String(t.location||t.city||'').toLowerCase()===s.location.toLowerCase())&&(!s.channel||channel(t)===s.channel)&&(s.min===undefined||Math.abs(t.cents)>=s.min)&&(s.max===undefined||Math.abs(t.cents)<=s.max);
 }
 function groups(rows,db){
   const result=new Map();

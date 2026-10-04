@@ -4,6 +4,7 @@ from datetime import datetime,date
 import xml.etree.ElementTree as ET
 from html.parser import HTMLParser
 from pdf_import import parse as pdf_parse
+from document_reader import inspect_document,generic_pdf_table
 import subprocess,tempfile,os
 import pdf_layouts
 sys.path.insert(0,str(Path(__file__).parent/'vendor'/'python'))
@@ -44,7 +45,8 @@ class Tables(HTMLParser):
         if tag=='tr' and self.row:self.rows.append(self.row);self.row=None
 def parse_file(filename):
     ext=Path(filename).suffix.lower()
-    if ext=='.pdf':return {'rows':pdf_parse(filename)}
+    with open(filename,'rb') as stream:signature=stream.read(5)
+    if ext=='.pdf' or signature==b'%PDF-':return {'rows':pdf_parse(filename)}
     if ext in ['.png','.jpg','.jpeg','.tif','.tiff','.bmp','.webp']:
         from PIL import Image
         with tempfile.TemporaryDirectory() as temp:
@@ -56,9 +58,11 @@ def parse_file(filename):
         import openpyxl
         book=openpyxl.load_workbook(filename,read_only=True,data_only=True)
         try:
+            records=[]
             for sheet in book:
-                try:return {'csv':table_rows(list(sheet.values))}
+                try:records.extend(csv.DictReader(io.StringIO(table_rows(list(sheet.values)))))
                 except ValueError:continue
+            if records:return {'records':records}
         finally:book.close()
         raise ValueError('No transaction table found in workbook.')
     if ext=='.ods':
@@ -101,5 +105,13 @@ if __name__=='__main__':
     result=[]
     for filename in json.loads(sys.stdin.read()):
         try:result.append({'file':filename,**parse_file(filename)})
-        except Exception as e:result.append({'file':filename,'error':str(e)})
+        except Exception as e:
+            try:
+                document=inspect_document(filename)
+                if Path(filename).suffix.lower()=='.pdf' and document['kind']=='statement':
+                    records=generic_pdf_table(filename)
+                    if records:result.append({'file':filename,'records':records,'document':document});continue
+                if document['kind']=='statement':result.append({'file':filename,'error':str(e),'document':document})
+                else:result.append({'file':filename,'rows':[],'document':document,'note':document['kind'].capitalize()+' indexed separately; no payment inferred from document totals.'})
+            except Exception as read_error:result.append({'file':filename,'error':str(e)+' Text reader: '+str(read_error)})
     print(json.dumps(result))

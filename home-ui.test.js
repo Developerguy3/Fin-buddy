@@ -6,4 +6,4 @@ test('overview excludes transfers and guards unfinished or mixed-currency totals
   assert.ok(!overview([...rows,{cents:-100,category:null,currency:'CAD'}]).includes('CA$100.00'));assert.ok(overview(rows,[{message:'Bad statement'}]).includes('unlock these totals'));
   assert.ok(overview([...rows,{cents:500,category:'Income',currency:'USD'}]).includes('multiple currencies'));
 });
-test('home, ledger and review browser scripts have valid syntax',()=>{for(const file of ['public/home-ui.js','public/review-ui.js','public/ledger-ui.js'])new vm.Script(fs.readFileSync(file,'utf8'));});
+test('home, ledger and review browser scripts have valid syntax',()=>{for(const file of ['public/home-ui.js','public/review-ui.js','public/ledger-ui.js','public/automation-ui.js','public/profiles-ui.js'])new vm.Script(fs.readFileSync(file,'utf8'));});

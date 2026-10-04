@@ -14,7 +14,11 @@ npm start
 
 Open [localhost:3210](http://localhost:3210). The server listens on loopback only. No npm packages are required. On a machine with the bundled Codex Python runtime, the app finds that runtime automatically. Otherwise set `FIN_BUDDY_PYTHON` to your Python executable. To change the port, set `PORT` before starting.
 
-A guided tutorial appears on first use. Replay it from the face icon → **User manual**.
+Choose Personal or Professional on first use, then follow the guided tutorial. Replay it from the profile icon → **User manual**.
+
+## Multiple profiles
+
+Open the profile icon → **Profiles · switch / add** to create a named Personal or Professional profile or switch between profiles. Your existing ledger stays in **Main profile**. Each profile has its own folders, transactions, categories, rules, reports and AI settings. New profiles start empty; add sources after creating one. The active profile is remembered after restarting. Save or close open transaction editors before switching. Profiles are local workspaces, not separate authenticated accounts.
 
 ## Import, review, report
 
@@ -28,7 +32,9 @@ Overview shows income, expenses, net cash flow, and spending suggestions after r
 
 ## Merchant rules and groups
 
-Rules use description matching, with optional account, absolute amount, date, explicit location, and payment-channel scope. More specific rules take precedence; equally specific conflicting categories stay unfinished. Edits in Categories & rules update matching transactions across imported months and future imports. Individual transaction Save updates only that transaction, even when a future matching rule is remembered; other open editors and unsaved choices remain intact. Close discards only its editor.
+Rules accept comma-separated keywords, phrases, abbreviations and numeric references, using Any (OR) or All (AND) matching. The optional rule note explains its purpose and does not affect matching. Optional account, amount, date, location and payment-channel scope narrow matching. More specific rules take precedence; equally specific conflicting categories stay unfinished. Edits update matching transactions across imported months and future imports. Saving a remembered rule applies it to all matching existing transactions, including categorized ones, and future imports. Other open editors and unsaved choices remain intact. Close discards only its editor.
+
+Recognition runs after imports and corrections: saved rules, signed money direction, prior confirmed merchant corrections, recognized payment phrases, then a local model when available. Incoming payments become Income; matching own-account transfers are excluded. An outgoing e-transfer with a person's name remains an expense requiring a known purpose. A correction teaches consistent repeated merchants within the same account and direction.
 
 Repeated merchants are normalized conservatively and kept separate by account, currency, and money direction. Original descriptions remain available. Confirm aliases when different names represent the same merchant. Split selected transactions into named groups or preview selections using rule scope, then merge groups back when needed. Preview counts describe current transactions, not a prediction of future transaction counts.
 
@@ -36,7 +42,9 @@ Repeated merchants are normalized conservatively and kept separate by account, c
 
 Trips appear on Overview only when a suggestion or confirmed trip exists. Trip suggestions require explicit location metadata and multiple spending signals close in time. A merchant location does not prove physical presence. Missing payment channels remain **Unknown**; online/recurring purchases do not contribute to trip detection. Confirm, rename, adjust dates, label business/personal purpose, change membership, or delete a trip without deleting its transactions. Suggestions can be disabled and derived trip data cleared. Savings suggestions are collapsible. No device location history is collected.
 
-Optional AI predictions require an already-installed Ollama-compatible local service. Enter its HTTP loopback endpoint and installed model name in **Merchant review**. Only merchant names and sampled descriptions are sent to the local service. Predictions require confirmation and never bypass report review. The app does not install models or use a cloud AI provider.
+Automatic local AI supports Ollama and OpenAI-compatible loopback servers. Configure **Categories & rules → Automatic recognition → Local model connection**, or leave the model blank to discover installed models. Only merchant names and sampled descriptions go to that local service. High-confidence classifications with an explanation are applied automatically; uncertain suggestions and rule conflicts stay for review. Availability and classification evidence are shown explicitly. A running installed model is required; the app does not download one or send data to a cloud provider.
+
+The fallback reader examines readable text, PDF content, office containers and images. Financial documents without bank transactions, such as invoices, are indexed separately with document type, currency and explicit totals. They never create inferred payments. Unknown binary formats, encrypted documents and statement layouts that cannot be extracted reliably still require attention.
 
 ## Supported statements
 
@@ -44,7 +52,7 @@ Containers: PDF, CSV, TSV, delimited TXT, XLS/XLSX/XLSM, ODS, OFX/QFX, QIF, JSON
 
 Recognized PDFs include RBC business chequing, Visa, operating loans, online banking, and UCU exports. Applicable counts, totals, running balances, or closing balances are validated. Recognized summaries contain no invented transactions. Windows OCR handles images and scanned PDFs; unfamiliar or unvalidated layouts appear in Notifications.
 
-CSV and table exports need `Date,Description,Amount` or `Date,Description,Debit,Credit`, with common column aliases accepted. Dates use `YYYY-MM-DD` or US `MM/DD/YYYY`. Positive amounts are inflows; negative amounts are outflows. Debit and Credit values are positive. Optional Currency, City, Location, and Channel columns preserve explicit metadata. Export currencies default to USD when absent; recognized Canadian bank PDFs use CAD. Only the first recognizable worksheet/table is imported from a workbook.
+CSV and table exports need `Date,Description,Amount` or `Date,Description,Debit,Credit`, with common column aliases accepted. Dates use `YYYY-MM-DD` or US `MM/DD/YYYY`. Positive amounts are inflows; negative amounts are outflows. Debit and Credit values are positive. Optional Currency, City, Location, and Channel columns preserve explicit metadata. Export currencies default to USD when absent; recognized Canadian bank PDFs use CAD. All recognizable XLSX/XLSM worksheets are imported. Legacy XLS and other table containers currently use their first recognizable table.
 
 ```csv
 Date,Description,Amount,Currency
