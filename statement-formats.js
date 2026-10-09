@@ -6,7 +6,7 @@ function recordsToRows(records){
   const aliases={transactiondate:'Date',posteddate:'Date',date:'Date',description:'Description',merchant:'Description',payee:'Description',memo:'Description',amount:'Amount',debit:'Debit',credit:'Credit'};
   const selected=keys.filter(k=>aliases[k.toLowerCase().replace(/[ _-]/g,'')]);
   const csv=selected.map(k=>quote(aliases[k.toLowerCase().replace(/[ _-]/g,'')])).join(',')+'\n'+records.map(r=>selected.map(k=>quote(r[k])).join(',')).join('\n');
-  return parseStatement(csv).map((r,i)=>({...r,currency:records[i].currency||records[i].Currency||'USD',accountNumber:records[i].accountNumber||records[i]['Account Number']||'',city:records[i].city||'',location:records[i].location||'',channel:records[i].channel||records[i].paymentChannel||''}));
+  return parseStatement(csv).map((r,i)=>{const currency=String(records[i].currency||records[i].Currency||'USD').trim().toUpperCase();if(!/^[A-Z]{3}$/.test(currency))throw Error('Currency must be a three-letter code such as CAD or USD.');return {...r,currency,accountNumber:records[i].accountNumber||records[i]['Account Number']||'',city:records[i].city||'',location:records[i].location||'',channel:records[i].channel||records[i].paymentChannel||''};});
 }
 function parseExport(text,extension){
   if(extension==='.json'){const data=JSON.parse(text);return recordsToRows(Array.isArray(data)?data:data.transactions);}

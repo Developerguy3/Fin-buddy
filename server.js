@@ -140,6 +140,8 @@ const server = http.createServer(async (req,res) => {
     if (req.headers.host !== `127.0.0.1:${port}` && req.headers.host !== `localhost:${port}`) return reply(res,403,{error:'Invalid host.'});
     if (req.method === 'POST' && req.headers.origin && ![`http://localhost:${port}`,`http://127.0.0.1:${port}`].includes(req.headers.origin)) return reply(res,403,{error:'Invalid origin.'});
     const url = new URL(req.url, `http://localhost:${port}`);
+    const assets={'/responsive.css':'text/css','/platform-ui.js':'text/javascript','/device-ui.js':'text/javascript','/manifest.webmanifest':'application/manifest+json','/sw.js':'text/javascript','/offline.html':'text/html','/icons/icon-192.png':'image/png','/icons/icon-512.png':'image/png','/icons/apple-touch-icon.png':'image/png'};
+    if(req.method==='GET'&&assets[url.pathname])return reply(res,200,fs.readFileSync(path.join(root,'public',url.pathname.slice(1))),assets[url.pathname]);
     if (req.method === 'GET' && url.pathname === '/') return reply(res,200,fs.readFileSync(path.join(root,'public','index.html')),'text/html; charset=utf-8');
     if(req.method==='GET'&&['/review-ui.js','/home-ui.js','/ledger-ui.js','/automation-ui.js','/profiles-ui.js'].includes(url.pathname))return reply(res,200,fs.readFileSync(path.join(root,'public',url.pathname.slice(1))),'text/javascript; charset=utf-8');
     if (req.method === 'GET' && url.pathname === '/api/state') return reply(res,200,snapshot());
@@ -233,7 +235,7 @@ const server = http.createServer(async (req,res) => {
       if(rows.length!==new Set(input.ids).size)throw Error('Some transactions no longer exist.');
       const category=chooseCategory(input);
       const scope=validateScope(input.scope||{});
-      if(input.remember&&(!scope.pattern||scope.pattern.trim().length<3||!rows.every(t=>scopeMatches(t,scope))))throw Error('The permanent rule must match all selected transactions and contain at least 3 characters.');
+      if(input.remember&&(!keywordTerms(scope.pattern).length||!rows.every(t=>scopeMatches(t,scope))))throw Error('The permanent keywords must match all selected transactions.');
       if(!db.categories.includes(category))db.categories.push(category);
       if(input.remember)db.rules.push({...scope,pattern:scope.pattern.toLowerCase(),category});
       for(const t of rows){t.category=category;t.categorySource='user';t.isTransfer=category===db.transferCategory;}
@@ -287,7 +289,7 @@ const server = http.createServer(async (req,res) => {
       if(db.rules.some(r=>r!==rule&&r.pattern===pattern))throw Error('A rule already uses this matching text. Edit that rule instead.');
       const category=chooseCategory(input);
       if(!db.categories.includes(category))db.categories.push(category);
-      rule.pattern=pattern;rule.category=category;rule.description=String(input.ruleDescription||rule.description||'').slice(0,300);rule.matchMode=input.matchMode==='all'?'all':rule.matchMode||'any';
+      rule.pattern=pattern;rule.category=category;rule.description=String(input.ruleDescription===undefined?rule.description||'':input.ruleDescription).slice(0,300);rule.matchMode=input.matchMode==='all'?'all':input.matchMode==='any'?'any':rule.matchMode||'any';
       const updated=applyEditedRule(oldPattern,pattern);save();return reply(res,200,{...snapshot(),updated});
     }
     if (url.pathname === '/api/categorize') {

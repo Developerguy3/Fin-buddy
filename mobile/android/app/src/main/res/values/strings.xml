@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Fin Buddy</string>
+    <string name="title_activity_main">Fin Buddy</string>
+    <string name="package_name">io.finbuddy.app</string>
+    <string name="custom_url_scheme">io.finbuddy.app</string>
+</resources>

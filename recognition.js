@@ -1,7 +1,8 @@
 function keywordTerms(value){return [...new Set(String(value||'').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean))];}
 function keywordMatch(description,value,mode='any'){
   const terms=keywordTerms(value);if(!terms.length)return false;
-  const text=String(description).toLowerCase(),normalized=text.replace(/([a-z])\.(?=[a-z]|\b)/g,'$1');const test=term=>{if(/^[a-z0-9]{1,3}$/i.test(term))return new RegExp('(^|[^a-z0-9])'+term+'([^a-z0-9]|$)','i').test(normalized);return text.includes(term)||normalized.includes(term.replace(/\./g,''));};
+  const normalize=s=>String(s).normalize('NFKC').toLowerCase().replace(/[‐‑‒–—−]/g,'-').replace(/\be[ -]?transfer\b/g,'e-transfer');
+  const text=normalize(description),normalized=text.replace(/([a-z])\.(?=[a-z]|\b)/g,'$1');const test=raw=>{const term=normalize(raw);if(/^[a-z0-9]{1,3}$/i.test(term))return new RegExp('(^|[^a-z0-9])'+term+'([^a-z0-9]|$)','i').test(normalized);return text.includes(term)||normalized.includes(term.replace(/\./g,''));};
   return mode==='all'?terms.every(test):terms.some(test);
 }
 function normalizedMerchant(description){

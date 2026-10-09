@@ -1,1 +1,35 @@
-{"name":"fin-buddy","version":"1.0.0","private":true,"scripts":{"start":"node server.js","test":"node --test"},"engines":{"node":">=20"}}
+{
+  "name": "fin-buddy",
+  "version": "1.1.0",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test",
+    "mobile:build": "node mobile/build.mjs",
+    "mobile:model": "node mobile/download-model.mjs",
+    "mobile:android": "npm run mobile:build && cd mobile && npx cap sync android",
+    "mobile:ios": "npm run mobile:build && cd mobile && npx cap sync ios && node normalize-ios.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/core": "^8.5.3",
+    "@capacitor/filesystem": "^8.1.4",
+    "@capacitor/ios": "^8.5.3",
+    "@capacitor/share": "^8.0.3",
+    "@huggingface/transformers": "^4.3.1",
+    "@noble/hashes": "^2.4.0",
+    "@tesseract.js-data/eng": "^1.0.0",
+    "fflate": "^0.8.3",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^6.4.299",
+    "tesseract.js": "^7.0.0",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.4.3",
+    "esbuild": "^0.28.2"
+  }
+}

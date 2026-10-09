@@ -16,6 +16,12 @@ Open [localhost:3210](http://localhost:3210). The server listens on loopback onl
 
 Choose Personal or Professional on first use, then follow the guided tutorial. Replay it from the profile icon → **User manual**.
 
+## Web, Android and iOS
+
+The web UI adapts to phones and tablets with touch-sized controls, safe-area spacing, bottom navigation, stacked transaction cards and responsive dialogs. The profile menu includes web installation instructions. The web service worker caches only an offline information screen and static assets; financial API responses are never cached. The desktop web app still needs its local server.
+
+Native Android and iOS source projects bundle an independent on-device ledger and small local LLM. See [mobile build instructions](mobile/README.md) for build commands, model size, signing requirements and mobile-specific limitations. Native PDF, spreadsheet, Word/XML and image readers run locally, with balance validation and bundled English OCR. Ambiguous document extraction remains unfinished until reviewed. Multiple device folders, encrypted backups and PDF report export are available.
+
 ## Multiple profiles
 
 Open the profile icon → **Profiles · switch / add** to create a named Personal or Professional profile or switch between profiles. Your existing ledger stays in **Main profile**. Each profile has its own folders, transactions, categories, rules, reports and AI settings. New profiles start empty; add sources after creating one. The active profile is remembered after restarting. Save or close open transaction editors before switching. Profiles are local workspaces, not separate authenticated accounts.

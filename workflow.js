@@ -43,6 +43,7 @@ function parseStatement(text,delimiter=',') {
       if(amount>=0) cents=money(r[amount]);
       else { const out=r[debit]?money(r[debit]):0, incoming=r[credit]?money(r[credit]):0; if(out<0 || incoming<0 || (out && incoming)) throw new Error('Debit and Credit must be positive and cannot both be populated.'); cents=incoming-out; }
       const metadata={};for(const field of ['city','location','channel','payment channel','currency','account number']){const index=h.indexOf(field);if(index>=0&&r[index])metadata[({'payment channel':'paymentChannel','account number':'accountNumber'})[field]||field]=r[index];}
+      if(metadata.currency){metadata.currency=metadata.currency.toUpperCase();if(!/^[A-Z]{3}$/.test(metadata.currency))throw Error('Currency must be a three-letter code such as CAD or USD.');}
       return { date:date(r[di]), description:r[desc], cents,...metadata };
     } catch(e) { throw new Error(`Row ${i+2}: ${e.message}`); }
   });

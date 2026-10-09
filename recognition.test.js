@@ -10,6 +10,8 @@ test('comma rules support phrases, numeric tokens and dotted abbreviations with 
  assert.equal(keywordMatch('Payment 0233','0233, unknown','all'),false);
  assert.equal(keywordMatch('VA TRANSP','VA, TRANSP','all'),true);
  assert.equal(keywordMatch('VALUE','VA'),false);
+ assert.equal(keywordMatch('e–Transfer received Alice','e-transfer'),true);
+ assert.equal(keywordMatch('e Transfer received Alice','e-transfer'),true);
 });
 test('incoming e-transfers use signed direction and normalize changing references',()=>{
  const rows=[row('1','e-Transfer - Autodeposit JACK CAabcd123',500),row('2','e-Transfer sent JACK',-500)];run(rows);
