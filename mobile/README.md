@@ -2,6 +2,10 @@
 
 The Capacitor projects bundle the responsive UI, an IndexedDB ledger and the small SmolLM2-135M-Instruct ONNX model. They do not use the desktop server or an internet API for finance processing. Each installed app has its own profiles and data; it does not synchronize with the desktop ledger.
 
+## Install
+
+[Android APK](https://github.com/Developerguy3/Fin-buddy/releases/download/v1.1.0/Fin-Buddy-1.1.0-android.apk) · [All release assets](https://github.com/Developerguy3/Fin-buddy/releases/tag/v1.1.0). Downloads require access to this private repository. The APK is signed and non-debug; its SHA-256 is provided in SHA256SUMS.txt. Android and iOS simulator compilation passed, but these checks do not replace physical-device testing. iOS requires iOS 17 or later and real-device signing remains deferred.
+
 ## Build
 
 From the repository root:
