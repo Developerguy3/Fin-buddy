@@ -12,7 +12,7 @@ if(!(Test-Path -LiteralPath $taskKey)) {
  ConvertTo-SecureString $taskPassword -AsPlainText -Force | ConvertFrom-SecureString | Set-Content -LiteralPath $taskPasswordFile
 } else {
  if(!(Test-Path -LiteralPath $taskPasswordFile)){throw 'The signing key password is missing. Restore the original signing credentials.'}
- $taskSecure=Get-Content -LiteralPath $taskPasswordFile -Raw | ConvertTo-SecureString
+ $taskSecure=(Get-Content -LiteralPath $taskPasswordFile -Raw).Trim() | ConvertTo-SecureString
  $taskPassword=[System.Net.NetworkCredential]::new('', $taskSecure).Password
 }
 $env:JAVA_HOME=$taskJava
@@ -24,7 +24,7 @@ try {
  }
  $taskOut=Join-Path $taskRoot 'output/apps'
  New-Item -ItemType Directory -Force -Path $taskOut | Out-Null
- $taskApk=Join-Path $taskOut 'Fin-Buddy-1.1.0-android.apk'
+ $taskApk=Join-Path $taskOut 'Fin-Buddy-1.1.1-android.apk'
  $taskSigner=Join-Path $taskRoot '.build-tools/android-sdk/build-tools/36.0.0/apksigner.bat'
  & $taskSigner sign --ks $taskKey --ks-key-alias finbuddy --ks-pass env:FIN_BUDDY_KEY_PASSWORD --key-pass env:FIN_BUDDY_KEY_PASSWORD --out $taskApk (Join-Path $PSScriptRoot 'android/app/build/outputs/apk/release/app-release-unsigned.apk')
  if($LASTEXITCODE -ne 0){throw 'Android app signing failed.'}

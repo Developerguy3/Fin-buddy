@@ -21,3 +21,4 @@ mobile/android/app/src/main/assets/capacitor.plugins.json
 mobile/ios/App/CapApp-SPM/.build/
 .build-tools/
 output/apps/
+output/site/

@@ -2,11 +2,13 @@
 
 An offline-first finance app that imports local financial statements, organizes transactions, learns categorization rules, and generates monthly cash-flow reports after review is complete.
 
-## Install Fin Buddy 1.1.0
+## Install Fin Buddy 1.1.1
 
-[Download the signed Android installer](https://github.com/Developerguy3/Fin-buddy/releases/download/v1.1.0/Fin-Buddy-1.1.0-android.apk) (about 162 MiB). The repository and downloads are private, so sign in to the owning GitHub account.
+[Download the signed Android installer](https://github.com/Developerguy3/Fin-buddy/releases/download/v1.1.1/Fin-Buddy-1.1.1-android.apk) (about 162 MiB). The repository and downloads are public; no login is required.
 
-[Release downloads](https://github.com/Developerguy3/Fin-buddy/releases/tag/v1.1.0) also include the standalone local web bundle, iOS simulator app and Android checksum. The Android and iOS simulator builds passed GitHub validation, and 31 automated tests passed. Physical-device testing has not been performed. Real-iPhone distribution signing is deferred until an Apple Developer account is configured.
+[Release downloads](https://github.com/Developerguy3/Fin-buddy/releases/tag/v1.1.0) for 1.1.0 include the standalone local web bundle, iOS simulator app and Android checksum. The Android and iOS simulator builds passed GitHub validation, and 31 automated tests passed. Physical-device testing has not been performed. Real-iPhone distribution signing is deferred until an Apple Developer account is configured.
+
+Android 1.1.1 connects Capacitor system-bar insets to the responsive layout and adds icon buttons with a clear selected state to the bottom navigation. It is signed with the original release certificate and can update 1.1.0. Physical-device visual verification is still pending.
 
 ## Getting started
 
