@@ -1,0 +1,7 @@
+{
+  "project_id": "appgprj_6ae269d114188191b4062c16dec65c0c",
+  "url": "https://fin-buddy.robislegacy.chatgpt.site",
+  "access": "public",
+  "source_directory": "output/site",
+  "static_directory": "dist"
+}

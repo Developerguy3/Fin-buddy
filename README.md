@@ -2,6 +2,10 @@
 
 An offline-first finance app that imports local financial statements, organizes transactions, learns categorization rules, and generates monthly cash-flow reports after review is complete.
 
+## Public web app
+
+[Open Fin Buddy](https://fin-buddy.robislegacy.chatgpt.site) — no login or local server required. Statements, profiles and reports stay in your browser storage; they are not synchronized across devices. Use encrypted backups to move a workspace between devices. The website remains hosted when your computer is off.
+
 ## Install Fin Buddy 1.1.1
 
 [Download the signed Android installer](https://github.com/Developerguy3/Fin-buddy/releases/download/v1.1.1/Fin-Buddy-1.1.1-android.apk) (about 162 MiB). The repository and downloads are public; no login is required.

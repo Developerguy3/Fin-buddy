@@ -45,3 +45,7 @@ node mobile/preview.mjs
 ```
 
 Open `http://127.0.0.1:3211`. This preview uses an isolated device-local ledger and synthetic test data, not the desktop financial ledger. A browser preview verifies UI and runtime behavior; it does not replace Android/iOS device testing.
+
+## Public web deployment
+
+The hosted app is browser-local and requires no login. `hosting-site.json` retains the existing Sites identity; reuse it rather than registering another Site. Run `npm run mobile:build`, then `node mobile/prepare-site.mjs`. Publish the `output/site` checkout using the Sites source/package workflow. Large local model assets are split into exact chunks for hosting; the worker reconstructs them locally. The hosted build keeps standard/JSEP inference loaders and the portable LSTM OCR core to fit the host's expanded-size limit. No ledger data or signing credentials are included. Web data stays in IndexedDB on each browser; it does not automatically synchronize with the desktop or Android app.

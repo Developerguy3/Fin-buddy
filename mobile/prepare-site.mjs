@@ -3,8 +3,17 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 const root=path.resolve(import.meta.dirname,'..'),out=path.join(root,'output/site/dist');
+const hosting=JSON.parse(await fs.readFile(path.join(root,'mobile/hosting-site.json'),'utf8'));
+await fs.mkdir(path.join(root,'output/site/.openai'),{recursive:true});
+await fs.writeFile(path.join(root,'output/site/.openai/hosting.json'),JSON.stringify({project_id:hosting.project_id,static:{directory:'dist'}},null,2));
+await fs.rm(out,{recursive:true,force:true});
 await fs.mkdir(out,{recursive:true});
 await fs.cp(path.join(root,'mobile/www'),out,{recursive:true});
+// CPU inference needs the standard/JSEP loaders, not WebGPU/JSPI/asyncify variants.
+for(const name of await fs.readdir(path.join(out,'model-runtime'))){if(!/^ort-wasm-simd-threaded(?:\.jsep)?\.(?:mjs|wasm)$/.test(name))await fs.unlink(path.join(out,'model-runtime',name));}
+// Use Tesseract's portable LSTM core rather than shipping every SIMD/legacy variant.
+for(const name of await fs.readdir(path.join(out,'document-runtime/core'))){if(!/^tesseract-core-lstm\.wasm(?:\.js)?$/.test(name))await fs.unlink(path.join(out,'document-runtime/core',name));}
+const engine=path.join(out,'device-engine.js');await fs.writeFile(engine,(await fs.readFile(engine,'utf8')).replaceAll('"/document-runtime/core"','"/document-runtime/core/tesseract-core-lstm.wasm.js"'));
 const manifest={};
 async function walk(dir){for(const item of await fs.readdir(dir,{withFileTypes:true})){const file=path.join(dir,item.name);if(item.isDirectory()){await walk(file);continue;}const size=(await fs.stat(file)).size;if(size<=20*1024*1024)continue;const bytes=await fs.readFile(file),url='/'+path.relative(out,file).split(path.sep).join('/'),parts=[];for(let i=0;i<bytes.length;i+=20*1024*1024){const part=file+'.part'+parts.length;await fs.writeFile(part,bytes.subarray(i,i+20*1024*1024));parts.push('/'+path.relative(out,part).split(path.sep).join('/'));}manifest[url]=parts;await fs.unlink(file);}}
 await walk(out);
