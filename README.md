@@ -6,13 +6,13 @@ An offline-first finance app that imports local financial statements, organizes 
 
 [Open Fin Buddy](https://fin-buddy.robislegacy.chatgpt.site) — no login or local server required. Statements, profiles and reports stay in your browser storage; they are not synchronized across devices. Use encrypted backups to move a workspace between devices. The website remains hosted when your computer is off.
 
-## Install Fin Buddy 1.1.1
+## Install Fin Buddy 1.1.2
 
-[Download the signed Android installer](https://github.com/Developerguy3/Fin-buddy/releases/download/v1.1.1/Fin-Buddy-1.1.1-android.apk) (about 162 MiB). The repository and downloads are public; no login is required.
+[Download the signed Android installer](https://github.com/Developerguy3/Fin-buddy/releases/download/v1.1.2/Fin-Buddy-1.1.2-android.apk) (about 162 MiB). The repository and downloads are public; no login is required.
 
 [Release downloads](https://github.com/Developerguy3/Fin-buddy/releases/tag/v1.1.0) for 1.1.0 include the standalone local web bundle, iOS simulator app and Android checksum. The Android and iOS simulator builds passed GitHub validation, and 31 automated tests passed. Physical-device testing has not been performed. Real-iPhone distribution signing is deferred until an Apple Developer account is configured.
 
-Android 1.1.1 connects Capacitor system-bar insets to the responsive layout and adds icon buttons with a clear selected state to the bottom navigation. It is signed with the original release certificate and can update 1.1.0. Physical-device visual verification is still pending.
+Android 1.1.2 connects Capacitor system-bar insets to the responsive layout and adds icon buttons with a clear selected state to the bottom navigation. It is signed with the original release certificate and can update 1.1.0. Browser layouts verified at 320, 390, 768 and 1280 pixels with no horizontal overflow. All four navigation tabs respond correctly. Physical-device system-bar verification is still pending.
 
 ## Getting started
 

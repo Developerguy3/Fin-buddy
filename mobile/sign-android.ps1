@@ -24,7 +24,7 @@ try {
  }
  $taskOut=Join-Path $taskRoot 'output/apps'
  New-Item -ItemType Directory -Force -Path $taskOut | Out-Null
- $taskApk=Join-Path $taskOut 'Fin-Buddy-1.1.1-android.apk'
+ $taskApk=Join-Path $taskOut 'Fin-Buddy-1.1.2-android.apk'
  $taskSigner=Join-Path $taskRoot '.build-tools/android-sdk/build-tools/36.0.0/apksigner.bat'
  & $taskSigner sign --ks $taskKey --ks-key-alias finbuddy --ks-pass env:FIN_BUDDY_KEY_PASSWORD --key-pass env:FIN_BUDDY_KEY_PASSWORD --out $taskApk (Join-Path $PSScriptRoot 'android/app/build/outputs/apk/release/app-release-unsigned.apk')
  if($LASTEXITCODE -ne 0){throw 'Android app signing failed.'}
