@@ -1,5 +1,5 @@
 const CACHE='finbuddy-device-1.1.0';
-const SHELL=['/','/device-engine.js','/device-model.js','/responsive.css','/review-ui.js','/home-ui.js','/ledger-ui.js','/automation-ui.js','/profiles-ui.js','/platform-ui.js','/device-ui.js','/manifest.webmanifest','/icons/icon-192.png','/icons/icon-512.png','/icons/apple-touch-icon.png'];
+const SHELL=['/','/device-engine.js','/device-model.js','/responsive.css','/appearance.css','/review-ui.js','/home-ui.js','/ledger-ui.js','/automation-ui.js','/profiles-ui.js','/platform-ui.js','/device-ui.js','/manifest.webmanifest','/icons/icon-192.png','/icons/icon-512.png','/icons/apple-touch-icon.png'];
 const allowed=path=>SHELL.includes(path)||['/models/','/model-runtime/','/document-runtime/'].some(prefix=>path.startsWith(prefix));
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(SHELL.map(url=>new Request(url,{cache:'reload'})))).then(()=>self.skipWaiting())));
 self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('finbuddy-device-')&&k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));

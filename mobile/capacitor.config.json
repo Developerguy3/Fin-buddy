@@ -1,1 +1,21 @@
-{"appId":"io.finbuddy.app","appName":"Fin Buddy","webDir":"www","android":{"path":"android"},"ios":{"path":"ios"},"server":{"androidScheme":"https"}}
+{
+  "appId": "io.finbuddy.app",
+  "appName": "Fin Buddy",
+  "webDir": "www",
+  "android": {
+    "path": "android"
+  },
+  "ios": {
+    "path": "ios"
+  },
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "SystemBars": {
+      "style": "LIGHT",
+      "insetsHandling": "css",
+      "initialViewportFitValueHint": "cover"
+    }
+  }
+}
